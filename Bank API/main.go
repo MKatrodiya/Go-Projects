@@ -1,7 +1,8 @@
 package main
 
-import "fmt"
-
 func main() {
-	fmt.Println("Bank API")
+	server := APIServer{
+		listenPort: ":8080",
+	}
+	server.Run()
 }

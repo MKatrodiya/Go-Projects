@@ -14,7 +14,7 @@ type APIServer struct {
 	store      Storage
 }
 
-func createServer(listenPort string, store Storage) *APIServer {
+func CreateAPIServer(listenPort string, store Storage) *APIServer {
 	apiServer := APIServer{
 		listenPort: listenPort,
 		store:      store,
@@ -26,7 +26,7 @@ func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/account", makeHandleFunc(s.handleAccount))
-	router.HandleFunc("/account/{id}", makeHandleFunc(s.handleGetAccount))
+	router.HandleFunc("/account/{id}", makeHandleFunc(s.handleGetAccountByID))
 
 	log.Println("Server running on port ", s.listenPort)
 
@@ -43,17 +43,39 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 	if r.Method == "DELETE" {
 		return s.handleDeleteAccount(w, r)
 	}
-	return fmt.Errorf("Method not supported %s", r.Method)
+	return fmt.Errorf("method not supported %s", r.Method)
 }
 
 func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
+	accounts, err := s.store.GetAccounts()
+
+	if err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, accounts)
+}
+
+func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error {
 	id := mux.Vars(r)["id"]
 	fmt.Println(id)
 	return WriteJSON(w, http.StatusOK, &Account{})
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
-	return nil
+	createAccountRequest := &CreateAccountRequest{}
+
+	err := json.NewDecoder(r.Body).Decode(createAccountRequest)
+	if err != nil {
+		return err
+	}
+
+	account := CreateAccount(createAccountRequest.FirstName, createAccountRequest.LastName)
+	if err := s.store.CreateAccount(account); err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, account)
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
@@ -80,7 +102,7 @@ func makeHandleFunc(f apiFunc) http.HandlerFunc {
 }
 
 func WriteJSON(w http.ResponseWriter, statusCode int, payload any) error {
-	w.WriteHeader(statusCode)
 	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
 	return json.NewEncoder(w).Encode(payload)
 }

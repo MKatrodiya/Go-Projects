@@ -89,7 +89,7 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 type apiFunc func(http.ResponseWriter, *http.Request) error
 
 type APIError struct {
-	Error string
+	Error string `json:"error"`
 }
 
 func makeHandleFunc(f apiFunc) http.HandlerFunc {

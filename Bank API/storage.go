@@ -80,18 +80,24 @@ func (s *PostgresStore) UpdateAccount(account *Account) error {
 }
 
 func (s *PostgresStore) DeleteAccount(id int) error {
-	return nil
+	query := `delete from account where id=$1`
+	_, err := s.db.Query(query, id)
+	return err
 }
 
 func (s *PostgresStore) GetAccountByID(id int) (*Account, error) {
-	// query := `select * from account where id=$1`
-	// // res, err := s.db.Query(query, id)
+	query := `select * from account where id=$1`
+	rows, err := s.db.Query(query, id)
 
-	// if err != nil {
-	// 	return nil, err
-	// }
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	for rows.Next() {
+		return scanRowToAccount(rows)
+	}
+
+	return nil, fmt.Errorf("Account with id %d not found", id)
 }
 
 func (s *PostgresStore) GetAccounts() ([]*Account, error) {

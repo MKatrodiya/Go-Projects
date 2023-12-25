@@ -11,6 +11,7 @@ import (
 
 	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type APIServer struct {
@@ -29,6 +30,7 @@ func CreateAPIServer(listenPort string, store Storage) *APIServer {
 func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
+	router.HandleFunc("/signin", makeHandleFunc(s.HandleSignIn))
 	router.HandleFunc("/account", makeHandleFunc(s.handleAccount))
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHandleFunc(s.handleGetAccountByID), s.store))
 	router.HandleFunc("/transfer", makeHandleFunc(s.handleTransfer))
@@ -36,6 +38,40 @@ func (s *APIServer) Run() {
 	log.Println("Server running on port ", s.listenPort)
 
 	http.ListenAndServe(s.listenPort, router)
+}
+
+func (s *APIServer) HandleSignIn(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != "POST" {
+		return fmt.Errorf("method not supported %s", r.Method)
+	}
+
+	req := new(SignInRequest)
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		return err
+	}
+
+	account, err := s.store.GetAccountByNumber(req.AccountNumber)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(account.EncryptedPassword), []byte(req.Password)); err != nil {
+		permissionDeniedResponse(w)
+		return nil
+	}
+
+	token, err := createJWT(account)
+
+	if err != nil {
+		return err
+	}
+
+	resp := SignInResponse{
+		JWTToken:      token,
+		AccountNumber: req.AccountNumber,
+	}
+	WriteJSON(w, http.StatusOK, resp)
+	return nil
 }
 
 func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error {
@@ -81,25 +117,21 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
-	createAccountRequest := &CreateAccountRequest{}
+	req := &CreateAccountRequest{}
 
-	err := json.NewDecoder(r.Body).Decode(createAccountRequest)
+	err := json.NewDecoder(r.Body).Decode(req)
 	if err != nil {
 		return err
 	}
 
-	account := CreateAccount(createAccountRequest.FirstName, createAccountRequest.LastName)
+	account, err := CreateAccount(req.FirstName, req.LastName, req.Password)
+	if err != nil {
+		return err
+	}
+
 	if err := s.store.CreateAccount(account); err != nil {
 		return err
 	}
-
-	token, err := createJWT(account)
-
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("JWT: ", token)
 
 	return WriteJSON(w, http.StatusOK, account)
 }
